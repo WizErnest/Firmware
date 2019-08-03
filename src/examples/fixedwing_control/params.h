@@ -44,10 +44,18 @@ struct params {
 	float hdng_p;
 	float roll_p;
 	float pitch_p;
+    float roll_i;
+    float pitch_i;
+    float roll_d;
+    float pitch_d;
 };
 
 struct param_handles {
 	param_t hdng_p;
 	param_t roll_p;
 	param_t pitch_p;
+    param_t roll_i;
+    param_t pitch_i;
+    param_t roll_d;
+    param_t pitch_d;
 };

@@ -146,6 +146,13 @@ static int deamon_task;				/**< Handle of deamon task / thread */
 static struct params p;
 static struct param_handles ph;
 
+static uint64_t cur_time;
+
+static float roll_err_prv;
+static float pitch_err_prv;
+static float roll_err_sum;
+static float pitch_err_sum;
+
 void control_attitude(const struct vehicle_attitude_setpoint_s *att_sp, const struct vehicle_attitude_s *att,
 		      struct vehicle_rates_setpoint_s *rates_sp,
 		      struct actuator_controls_s *actuators)
@@ -172,20 +179,38 @@ void control_attitude(const struct vehicle_attitude_setpoint_s *att_sp, const st
 	 */
 
 	/*
-	 * Calculate roll error and apply P gain
-	 */
+    * Obtain previous and current time from message timestamp
+    * Calculate dt
+    */
+    uint64_t prv_time = cur_time;
+    cur_time = (att->timestamp);
+    float dt = (cur_time - prv_time) * 0.000001;
+
+    /*
+     * Calculate roll error and apply P, I, and D gains
+     */
 
 	matrix::Eulerf att_euler = matrix::Quatf(att->q);
 	matrix::Eulerf att_sp_euler = matrix::Quatf(att_sp->q_d);
 
 	float roll_err = att_euler.phi() - att_sp_euler.phi();
-	actuators->control[0] = roll_err * p.roll_p;
+
+    float roll_err_dif = (cur_time != prv_time) ? ((roll_err - roll_err_prv)/dt) : 0;
+    roll_err_sum += roll_err * dt;
+    roll_err_prv = roll_err;
+
+	actuators->control[0] = (roll_err * p.roll_p) + (roll_err_sum * p.roll_i) + (roll_err_dif * p.roll_d);
 
 	/*
-	 * Calculate pitch error and apply P gain
+	 * Calculate pitch error and apply P, I, and D gains
 	 */
 	float pitch_err = att_euler.theta() - att_sp_euler.theta();
-	actuators->control[1] = pitch_err * p.pitch_p;
+
+    float pitch_err_dif = (cur_time != prv_time) ? ((pitch_err - pitch_err_prv)/dt) : 0;
+    pitch_err_sum += pitch_err * dt;
+    pitch_err_prv = pitch_err;
+
+	actuators->control[1] = (pitch_err * p.pitch_p) + (pitch_err_sum * p.pitch_i) + (pitch_err_dif * p.pitch_d);
 }
 
 void control_heading(const struct vehicle_global_position_s *pos, const struct position_setpoint_s *sp,
@@ -229,6 +254,10 @@ int parameters_init(struct param_handles *handles)
 	handles->hdng_p 	=	param_find("EXFW_HDNG_P");
 	handles->roll_p 	=	param_find("EXFW_ROLL_P");
 	handles->pitch_p 	=	param_find("EXFW_PITCH_P");
+    handles->roll_i 	=	param_find("EXFW_ROLL_I");
+    handles->pitch_i 	=	param_find("EXFW_PITCH_I");
+    handles->roll_d 	=	param_find("EXFW_ROLL_D");
+    handles->pitch_d 	=	param_find("EXFW_PITCH_D");
 
 	return 0;
 }
@@ -238,6 +267,11 @@ int parameters_update(const struct param_handles *handles, struct params *parame
 	param_get(handles->hdng_p, &(parameters->hdng_p));
 	param_get(handles->roll_p, &(parameters->roll_p));
 	param_get(handles->pitch_p, &(parameters->pitch_p));
+    param_get(handles->pitch_p, &(parameters->pitch_p));
+    param_get(handles->roll_i, &(parameters->roll_i));
+    param_get(handles->pitch_i, &(parameters->pitch_i));
+    param_get(handles->roll_d, &(parameters->roll_d));
+    param_get(handles->pitch_d, &(parameters->pitch_d));
 
 	return 0;
 }
